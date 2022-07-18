@@ -17,8 +17,27 @@ IPAddress ip;
 uint16_t  port = 23;
 
 Servo myservo;  // create servo object to control a servo
-int16_t pos=1200;
-int16_t newpos=120;
+int16_t pos=90; // slightly opened
+int16_t newpos=pos;
+
+/* ------------------------------------------------- */
+
+void setservo()
+{
+    if (newpos == pos) {
+	Serial.print("Ignoring position move to ");
+	Serial.println(pos);
+	return;
+    }   
+    Serial.printf("Changing servo to %d\n", newpos);
+    while (newpos != pos) {
+      if (newpos > pos) { pos++; }
+      if (newpos < pos) { pos--; }
+      delay(40);
+      myservo.write(pos);
+    }
+}
+
 
 /* ------------------------------------------------- */
 
@@ -72,45 +91,39 @@ void errorMsg(String error, bool restart = true) {
 /* ------------------------------------------------- */
 
 void setupTelnet() {  
-  // passing on functions for various telnet events
-  telnet.onConnect(onTelnetConnect);
-  telnet.onConnectionAttempt(onTelnetConnectionAttempt);
-  telnet.onReconnect(onTelnetReconnect);
-  telnet.onDisconnect(onTelnetDisconnect);
-  
-  // passing a lambda function
-  telnet.onInputReceived([](String str) {
-    // checks for a certain command
-    if ((newpos = str.toInt())) {
-      Serial.printf("Changing servo to %d\n", newpos);
-      while (newpos != pos) {
-	if (newpos > pos) { pos++; }
-	if (newpos < pos) { pos--; }
-	delay(40);
-        myservo.write(pos);
-      }
-      telnet.print("Moved servo angle to ");
-      telnet.println(String(pos));
-    } else if (str == "ping") {
-      telnet.println("> pong");
-      Serial.println("- Telnet: pong");
-    // disconnect the client
-    } else if (str == "bye") {
-      telnet.println("> disconnecting you... Current servo angle is");
-      telnet.println(String(pos));
-      Serial.print("Disonnecting and sending servo angle ");
-      Serial.println(pos);
-      telnet.disconnectClient();
-    }
-  });
+    // passing on functions for various telnet events
+    telnet.onConnect(onTelnetConnect);
+    telnet.onConnectionAttempt(onTelnetConnectionAttempt);
+    telnet.onReconnect(onTelnetReconnect);
+    telnet.onDisconnect(onTelnetDisconnect);
 
-  Serial.print("- Telnet: ");
-  if (telnet.begin(port)) {
-    Serial.println("running");
-  } else {
-    Serial.println("error.");
-    errorMsg("Will reboot...");
-  }
+    // passing a lambda function
+    telnet.onInputReceived([](String str) {
+      // checks for a certain command
+      if ((newpos = str.toInt())) {
+	setservo();
+	telnet.print("Moved servo angle to ");
+	telnet.println(String(newpos));
+      } else if (str == "ping") {
+	telnet.println("> pong");
+	Serial.println("- Telnet: pong");
+      // disconnect the client
+      } else if (str == "bye") {
+	telnet.println("> disconnecting you... Current servo angle is");
+	telnet.println(String(pos));
+	Serial.print("Disonnecting and sending servo angle ");
+	Serial.println(pos);
+	telnet.disconnectClient();
+      }
+    });
+
+    Serial.print("- Telnet: ");
+    if (telnet.begin(port)) {
+      Serial.println("running");
+    } else {
+      Serial.println("error.");
+      errorMsg("Will reboot...");
+    }
 }
 
 /* ------------------------------------------------- */
@@ -144,7 +157,7 @@ void onTelnetConnectionAttempt(String ip) {
 /* ------------------------------------------------- */
 
 void setup() {
-  setupSerial(SERIAL_SPEED, "Servo Init");
+  setupSerial(SERIAL_SPEED, "Servo Init, opening to 90");
   myservo.attach(D4);  // attaches the servo on GIO2 to the servo object
   myservo.write(pos);
 #if 0
@@ -166,15 +179,29 @@ void setup() {
   Serial.print("Wifi: ");
   connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
   
-  if (isConnected()) {
-    ip = WiFi.localIP();
-    Serial.println();
-    Serial.print("- Telnet: "); Serial.print(ip); Serial.print(" "); Serial.print(port);
-    setupTelnet();
-  } else {
-    Serial.println();    
-    errorMsg("Error connecting to WiFi");
-  }
+    if (isConnected()) {
+	Serial.println("Wifi connected, opening to 100");
+	newpos = 80;
+	setservo();
+	ip = WiFi.localIP();
+	Serial.println();
+	Serial.print("- Telnet: "); Serial.print(ip); Serial.print(" "); Serial.print(port);
+	setupTelnet();
+	Serial.println("telnet setup, opening to 110");
+	newpos = 85;
+	setservo();
+	newpos = 70;
+	setservo();
+    } else {
+	Serial.println();    
+	errorMsg("Error connecting to WiFi");
+    }
+    newpos = 75;
+    setservo();
+    Serial.print("Setup done, opening to ");
+    newpos = 60;
+    Serial.println(newpos);
+    setservo();
 }
 
 /* ------------------------------------------------- */
