@@ -9,8 +9,18 @@
 #define WIFI_SSID       "magicnet-guest"
 #define WIFI_PASSWORD   "APPassphrase"
 
+#define SERVO_PIN	D4
+#define OPEN_PIN	D1
+#define CLOSE_PIN	D2
+
 /* ------------------------------------------------- */
 
+// 1 => tell server we got open
+// -1 => tell server we got close
+int8_t posswitch; 
+
+int16_t openpos=50;
+int16_t closepos=150;
 
 ESPTelnet telnet;
 IPAddress ip;
@@ -104,14 +114,16 @@ void setupTelnet() {
 	setservo();
 	telnet.print("Moved servo angle to ");
 	telnet.println(String(newpos));
+	posswitch = 0; 
       } else if (str == "ping") {
 	telnet.println("> pong");
 	Serial.println("- Telnet: pong");
       // disconnect the client
       } else if (str == "bye") {
 	telnet.println("> disconnecting you... Current servo angle is");
+	Serial.print("Disconnecting and sending servo angle ");
+	if (posswitch) { telnet.print("new: "); Serial.print("new: "); posswitch = 0; };
 	telnet.println(String(pos));
-	Serial.print("Disonnecting and sending servo angle ");
 	Serial.println(pos);
 	telnet.disconnectClient();
       }
@@ -157,8 +169,11 @@ void onTelnetConnectionAttempt(String ip) {
 /* ------------------------------------------------- */
 
 void setup() {
+  pinMode(OPEN_PIN, INPUT_PULLUP);
+  pinMode(CLOSE_PIN, INPUT_PULLUP);
+
   setupSerial(SERIAL_SPEED, "Servo Init, opening to 90");
-  myservo.attach(D4);  // attaches the servo on GIO2 to the servo object
+  myservo.attach(SERVO_PIN);  // attaches the servo on GIO2 to the servo object
   myservo.write(pos);
 #if 0
 
@@ -180,22 +195,24 @@ void setup() {
   connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
   
     if (isConnected()) {
-	Serial.println("Wifi connected, opening to 100");
+	Serial.println("Wifi connected, opening 1");
 	newpos = 80;
 	setservo();
 	ip = WiFi.localIP();
 	Serial.println();
 	Serial.print("- Telnet: "); Serial.print(ip); Serial.print(" "); Serial.print(port);
 	setupTelnet();
-	Serial.println("telnet setup, opening to 110");
+	Serial.println("telnet setup, opening 2");
 	newpos = 85;
 	setservo();
+	Serial.println("setservo2, opening 3");
 	newpos = 70;
 	setservo();
     } else {
 	Serial.println();    
 	errorMsg("Error connecting to WiFi");
     }
+    Serial.println("setservo3, opening 4");
     newpos = 75;
     setservo();
     Serial.print("Setup done, opening to ");
@@ -207,11 +224,24 @@ void setup() {
 /* ------------------------------------------------- */
 
 void loop() {
-  telnet.loop();
+    telnet.loop();
 
-  // send serial input to telnet as output
-  if (Serial.available()) {
-    telnet.print(Serial.read());
-  }
+    // send serial input to telnet as output
+    if (Serial.available()) {
+	telnet.print(Serial.read());
+    }
+
+    if (!digitalRead(OPEN_PIN) && posswitch != 1) {
+	Serial.println("Switch to Open");
+	posswitch = 1;
+	newpos = openpos;
+	setservo();
+    }
+    if (!digitalRead(CLOSE_PIN) && posswitch != -1) {
+	Serial.println("Switch to Close");
+	posswitch = -1;
+	newpos = closepos;
+	setservo();
+    }
 }
 //* ------------------------------------------------- */
