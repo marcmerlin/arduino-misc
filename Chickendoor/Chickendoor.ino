@@ -12,6 +12,7 @@
 #define SERVO_PIN	D4
 #define OPEN_PIN	D1
 #define CLOSE_PIN	D2
+#define WATER_PIN	D0
 
 /* ------------------------------------------------- */
 
@@ -120,6 +121,12 @@ void setupTelnet() {
 	Serial.println("- Telnet: pong");
       // disconnect the client
       } else if (str == "bye") {
+	telnet.print("> Open SW: ");
+	telnet.print((char) (!digitalRead(OPEN_PIN)+48));
+	telnet.print(" Close SW: ");
+	telnet.print((char) (!digitalRead(CLOSE_PIN)+48));
+	telnet.print(" Water: ");
+	telnet.println((char) (digitalRead(WATER_PIN)+48));
 	telnet.println("> disconnecting you... Current servo angle is");
 	Serial.print("Disconnecting and sending servo angle ");
 	if (posswitch) { telnet.print("new: "); Serial.print("new: "); posswitch = 0; };
@@ -171,6 +178,7 @@ void onTelnetConnectionAttempt(String ip) {
 void setup() {
   pinMode(OPEN_PIN, INPUT_PULLUP);
   pinMode(CLOSE_PIN, INPUT_PULLUP);
+  pinMode(WATER_PIN, INPUT_PULLUP);
 
   setupSerial(SERIAL_SPEED, "Servo Init, opening to 90");
   myservo.attach(SERVO_PIN);  // attaches the servo on GIO2 to the servo object
@@ -229,7 +237,12 @@ void loop() {
     // send serial input to telnet as output
     if (Serial.available()) {
 	telnet.print(Serial.read());
+
+
     }
+
+    if (millis() % 5000 < 1) Serial.printf("Open: %d, Close: %d, Water: %d\n", !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), digitalRead(WATER_PIN));
+    delay(1);
 
     if (!digitalRead(OPEN_PIN) && posswitch != 1) {
 	Serial.println("Switch to Open");
