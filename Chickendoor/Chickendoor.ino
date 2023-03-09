@@ -20,7 +20,7 @@
 // -1 => tell server we got close
 int8_t posswitch; 
 
-int16_t openpos=50;
+int16_t openpos=20;
 int16_t closepos=150;
 
 ESPTelnet telnet;
@@ -121,12 +121,12 @@ void setupTelnet() {
 	Serial.println("- Telnet: pong");
       // disconnect the client
       } else if (str == "bye") {
-	telnet.print("> Open SW: ");
+	telnet.print("Open SW: ");
 	telnet.print((char) (!digitalRead(OPEN_PIN)+48));
 	telnet.print(" Close SW: ");
 	telnet.print((char) (!digitalRead(CLOSE_PIN)+48));
 	telnet.print(" Water: ");
-	telnet.println((char) (digitalRead(WATER_PIN)+48));
+	telnet.println((char) (!digitalRead(WATER_PIN)+48));
 	telnet.println("> disconnecting you... Current servo angle is");
 	Serial.print("Disconnecting and sending servo angle ");
 	if (posswitch) { telnet.print("new: "); Serial.print("new: "); posswitch = 0; };
@@ -224,7 +224,7 @@ void setup() {
     newpos = 75;
     setservo();
     Serial.print("Setup done, opening to ");
-    newpos = 60;
+    newpos = openpos;
     Serial.println(newpos);
     setservo();
 }
@@ -241,7 +241,7 @@ void loop() {
 
     }
 
-    if (millis() % 5000 < 1) Serial.printf("Open: %d, Close: %d, Water: %d\n", !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), digitalRead(WATER_PIN));
+    if (millis() % 5000 < 1) Serial.printf("Open: %d, Close: %d, Water: %d\n", !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), !digitalRead(WATER_PIN));
     delay(1);
 
     if (!digitalRead(OPEN_PIN) && posswitch != 1) {
