@@ -13,15 +13,22 @@
 #define OPEN_PIN	D1
 #define CLOSE_PIN	D2
 #define WATER_PIN	D0
+// Only power the water testing board once an hour
+#define WATER_PWR_PIN	D8
 
 /* ------------------------------------------------- */
 
 // 1 => tell server we got open
 // -1 => tell server we got close
 int8_t posswitch; 
+uint32_t water_board_on;
+
 
 int16_t openpos=20;
 int16_t closepos=150;
+
+// Assume water is good by default until it is read
+bool water_read = 1;
 
 ESPTelnet telnet;
 IPAddress ip;
@@ -30,6 +37,15 @@ uint16_t  port = 23;
 Servo myservo;  // create servo object to control a servo
 int16_t pos=90; // slightly opened
 int16_t newpos=pos;
+
+/* ------------------------------------------------- */
+
+void prime_water_level_read() {
+    digitalWrite(WATER_PWR_PIN, HIGH);
+    water_board_on = millis();
+    Serial.print("Powering Water Board On for subsequent read at millis: ");
+    Serial.println(water_board_on);
+}
 
 /* ------------------------------------------------- */
 
@@ -126,7 +142,7 @@ void setupTelnet() {
 	telnet.print(" Close SW: ");
 	telnet.print((char) (!digitalRead(CLOSE_PIN)+48));
 	telnet.print(" Water: ");
-	telnet.println((char) (!digitalRead(WATER_PIN)+48));
+	telnet.println((char) (water_read+48));
 	telnet.println("> disconnecting you... Current servo angle is");
 	Serial.print("Disconnecting and sending servo angle ");
 	if (posswitch) { telnet.print("new: "); Serial.print("new: "); posswitch = 0; };
@@ -179,8 +195,14 @@ void setup() {
   pinMode(OPEN_PIN, INPUT_PULLUP);
   pinMode(CLOSE_PIN, INPUT_PULLUP);
   pinMode(WATER_PIN, INPUT_PULLUP);
+  pinMode(WATER_PWR_PIN, OUTPUT);
 
-  setupSerial(SERIAL_SPEED, "Servo Init, opening to 90");
+  setupSerial(SERIAL_SPEED, "Serial Init");
+
+  Serial.println("Priming water board for first read");
+  prime_water_level_read();
+
+  Serial.println("Servo Init, opening to 90");
   myservo.attach(SERVO_PIN);  // attaches the servo on GIO2 to the servo object
   myservo.write(pos);
 #if 0
@@ -241,16 +263,35 @@ void loop() {
 
     }
 
-    if (millis() % 5000 < 1) Serial.printf("Open: %d, Close: %d, Water: %d\n", !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), !digitalRead(WATER_PIN));
+    // trigger every 5 seconds
+    if (millis() % 5000 < 1) 
+    {
+	uint32_t diff = millis() - water_board_on;
+	// Wait at least 15 sec before trying to read from board after power on
+	if (millis() > water_board_on  && diff > 14500) {
+	    Serial.printf("mil:%u, last: %u, diff: %u. Reading and Powering Water Board Back Off. Water: ", millis(), water_board_on, diff);
+	    water_read = !digitalRead(WATER_PIN);
+	    Serial.println(water_read);
+	    digitalWrite(WATER_PWR_PIN, LOW);
+	    // do not read from water board again until it's re-enabled
+	    water_board_on = 4294967295;
+	// prime for sample taken above (within 15 sec)
+	} else if (millis() % 3600000 <  5005)  {
+	    prime_water_level_read();
+	}
+	Serial.printf("Open: %d, Close: %d, Water: %d\n", !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
+    }
     delay(1);
 
     if (!digitalRead(OPEN_PIN) && posswitch != 1) {
+	prime_water_level_read();
 	Serial.println("Switch to Open");
 	posswitch = 1;
 	newpos = openpos;
 	setservo();
     }
     if (!digitalRead(CLOSE_PIN) && posswitch != -1) {
+	prime_water_level_read();
 	Serial.println("Switch to Close");
 	posswitch = -1;
 	newpos = closepos;
