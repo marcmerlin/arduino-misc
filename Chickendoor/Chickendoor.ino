@@ -132,10 +132,23 @@ void setupTelnet() {
 	telnet.print("Moved servo angle to ");
 	telnet.println(String(newpos));
 	posswitch = 0; 
+      } else if (str == "open") {
+	telnet.println("> Simulate local switch open");
+	Serial.println("> Simulate local switch open");
+	newpos = openpos;
+	setservo();
+      } else if (str == "close") {
+	telnet.println("> Simulate local switch close");
+	Serial.println("> Simulate local switch close");
+	newpos = closepos;
+	setservo();
+      } else if (str == "water") {
+	telnet.println("> Trigger water level read, wait 15 sec to get result");
+	Serial.println("> Trigger water level read, wait 15 sec to get result");
+	prime_water_level_read();
       } else if (str == "ping") {
 	telnet.println("> pong");
 	Serial.println("- Telnet: pong");
-      // disconnect the client
       } else if (str == "bye") {
 	telnet.print("Open SW: ");
 	telnet.print((char) (!digitalRead(OPEN_PIN)+48));
@@ -169,6 +182,7 @@ void onTelnetConnect(String ip) {
   Serial.print(ip);
   Serial.println(" connected");
   telnet.println("\nWelcome " + telnet.getIP());
+  telnet.println("Commands: [angle:0-255]/open/close/water/ping/bye");
 }
 
 void onTelnetDisconnect(String ip) {
@@ -285,14 +299,14 @@ void loop() {
 
     if (!digitalRead(OPEN_PIN) && posswitch != 1) {
 	prime_water_level_read();
-	Serial.println("Switch to Open");
+	Serial.println("Switch to Open and re-poll water level");
 	posswitch = 1;
 	newpos = openpos;
 	setservo();
     }
     if (!digitalRead(CLOSE_PIN) && posswitch != -1) {
 	prime_water_level_read();
-	Serial.println("Switch to Close");
+	Serial.println("Switch to Close and re-poll water level");
 	posswitch = -1;
 	newpos = closepos;
 	setservo();
