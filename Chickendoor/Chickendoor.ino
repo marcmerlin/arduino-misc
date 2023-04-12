@@ -129,15 +129,17 @@ void setupTelnet() {
       // checks for a certain command
       if ((newpos = str.toInt())) {
 	setservo();
-	telnet.print("Moved servo angle to ");
+	telnet.print("Reset posswitch (and NEW: flag) and move servo angle to ");
 	telnet.println(String(newpos));
 	posswitch = 0; 
       } else if (str == "open") {
+	posswitch = 2;
 	telnet.println("> Simulate local switch open");
 	Serial.println("> Simulate local switch open");
 	newpos = openpos;
 	setservo();
       } else if (str == "close") {
+	posswitch = -2;
 	telnet.println("> Simulate local switch close");
 	Serial.println("> Simulate local switch close");
 	newpos = closepos;
@@ -150,7 +152,11 @@ void setupTelnet() {
 	telnet.println("> pong");
 	Serial.println("- Telnet: pong");
       } else if (str == "bye") {
-	telnet.print("Open SW: ");
+	char *posstr = "   ";
+	telnet.print("Pos SW: ");
+	sprintf(posstr, "%d", posswitch);
+	telnet.print(posstr);
+	telnet.print(", Open SW: ");
 	telnet.print((char) (!digitalRead(OPEN_PIN)+48));
 	telnet.print(" Close SW: ");
 	telnet.print((char) (!digitalRead(CLOSE_PIN)+48));
@@ -158,7 +164,9 @@ void setupTelnet() {
 	telnet.println((char) (water_read+48));
 	telnet.println("> disconnecting you... Current servo angle is");
 	Serial.print("Disconnecting and sending servo angle ");
-	if (posswitch) { telnet.print("new: "); Serial.print("new: "); posswitch = 0; };
+	// We send new to the other other side until they reset it by sending a new
+	// angle to turn that off (adding +1)
+	if (posswitch) { telnet.print("NEW: "); Serial.print("NEW: "); };
 	telnet.println(String(pos));
 	Serial.println(pos);
 	telnet.disconnectClient();
@@ -293,7 +301,7 @@ void loop() {
 	} else if (millis() % 3600000 <  5005)  {
 	    prime_water_level_read();
 	}
-	Serial.printf("Open: %d, Close: %d, Water: %d\n", !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
+	Serial.printf("Pos SW: %d, Open: %d, Close: %d, Water: %d\n", posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
     }
     delay(1);
 
