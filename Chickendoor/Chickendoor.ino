@@ -1,7 +1,9 @@
 /* ------------------------------------------------- */
 
 #include "ESPTelnet.h"          
-#include <Servo.h>
+//#include <Servo.h>
+#include <ESP32Servo.h>
+
 
 /* ------------------------------------------------- */
 
@@ -9,12 +11,12 @@
 #define WIFI_SSID       "magicnet-guest"
 #define WIFI_PASSWORD   "APPassphrase"
 
-#define SERVO_PIN	D4
-#define OPEN_PIN	D1
-#define CLOSE_PIN	D2
-#define WATER_PIN	D0
+#define SERVO_PIN	15
+#define OPEN_PIN	23
+#define CLOSE_PIN	22
+#define WATER_PIN	18
 // Only power the water testing board once an hour
-#define WATER_PWR_PIN	D8
+#define WATER_PWR_PIN	19
 
 /* ------------------------------------------------- */
 
@@ -152,7 +154,7 @@ void setupTelnet() {
 	telnet.println("> pong");
 	Serial.println("- Telnet: pong");
       } else if (str == "bye") {
-	char *posstr = "   ";
+	char posstr[5];
 	telnet.print("Pos SW: ");
 	sprintf(posstr, "%d", posswitch);
 	telnet.print(posstr);
@@ -289,8 +291,8 @@ void loop() {
     if (millis() % 5000 < 1) 
     {
 	uint32_t diff = millis() - water_board_on;
-	// Wait at least 15 sec before trying to read from board after power on
-	if (millis() > water_board_on  && diff > 14500) {
+	// Wait at least 5 sec before trying to read from board after power on
+	if (millis() > water_board_on  && diff > 4500) {
 	    Serial.printf("mil:%u, last: %u, diff: %u. Reading and Powering Water Board Back Off. Water: ", millis(), water_board_on, diff);
 	    water_read = !digitalRead(WATER_PIN);
 	    Serial.println(water_read);
