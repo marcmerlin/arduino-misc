@@ -8,8 +8,7 @@
 /* ------------------------------------------------- */
 
 #define SERIAL_SPEED    115200
-#define WIFI_SSID       "magicnet-guest"
-#define WIFI_PASSWORD   "APPassphrase"
+#include "wifi_secrets.h"
 
 #define SERVO_PIN	15
 #define OPEN_PIN	23
@@ -58,7 +57,7 @@ void setservo()
 	Serial.println(pos);
 	return;
     }   
-    Serial.printf("Changing servo to %d\n", newpos);
+    Serial.printf("Changing servo to %d\n\r", newpos);
     while (newpos != pos) {
       if (newpos > pos) { pos++; }
       if (newpos < pos) { pos--; }
@@ -249,22 +248,22 @@ void setup() {
   connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
   
     if (isConnected()) {
-	Serial.println("Wifi connected, opening 1");
-	newpos = 80;
-	setservo();
-	ip = WiFi.localIP();
-	Serial.println();
-	Serial.print("- Telnet: "); Serial.print(ip); Serial.print(" "); Serial.print(port);
-	setupTelnet();
-	Serial.println("telnet setup, opening 2");
-	newpos = 85;
-	setservo();
-	Serial.println("setservo2, opening 3");
-	newpos = 70;
-	setservo();
+      Serial.println("Wifi connected, opening 1");
+      newpos = 80;
+      setservo();
+      ip = WiFi.localIP();
+      Serial.println();
+      Serial.print("- Telnet: "); Serial.print(ip); Serial.print(" "); Serial.print(port);
+      setupTelnet();
+      Serial.println("telnet setup, opening 2");
+      newpos = 85;
+      setservo();
+      Serial.println("setservo2, opening 3");
+      newpos = 70;
+      setservo();
     } else {
-	Serial.println();    
-	errorMsg("Error connecting to WiFi");
+      Serial.println();    
+      errorMsg("Error connecting to WiFi");
     }
     Serial.println("setservo3, opening 4");
     newpos = 75;
@@ -278,48 +277,54 @@ void setup() {
 /* ------------------------------------------------- */
 
 void loop() {
-    telnet.loop();
+    static uint32_t nextprint = 0;
 
-    // send serial input to telnet as output
-    if (Serial.available()) {
-	telnet.print(Serial.read());
+    if (millis() > nextprint) {
+      // Every 5 seconds
+      nextprint = millis() + 5000;
 
-
+      uint32_t diff = millis() - water_board_on;
+      // Wait at least 5 sec before trying to read from board after power on
+      if (millis() > water_board_on  && diff > 4500) {
+        Serial.printf("mil:%u, last: %u, diff: %u. Reading and Powering Water Board Back Off. Water: ", millis(), water_board_on, diff);
+        water_read = !digitalRead(WATER_PIN);
+        Serial.println(water_read);
+        digitalWrite(WATER_PWR_PIN, LOW);
+        // do not read from water board again until it's re-enabled
+        water_board_on = 4294967295;
+      } else if (millis() % 3600000 <  5005)  {
+          // prime for sample taken above (within 15 sec)
+          prime_water_level_read();
+      }
+      Serial.printf("Pos SW: %d, Open: %d, Close: %d, Water: %d\n\r", posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
     }
-
-    // trigger every 5 seconds
-    if (millis() % 5000 < 1) 
-    {
-	uint32_t diff = millis() - water_board_on;
-	// Wait at least 5 sec before trying to read from board after power on
-	if (millis() > water_board_on  && diff > 4500) {
-	    Serial.printf("mil:%u, last: %u, diff: %u. Reading and Powering Water Board Back Off. Water: ", millis(), water_board_on, diff);
-	    water_read = !digitalRead(WATER_PIN);
-	    Serial.println(water_read);
-	    digitalWrite(WATER_PWR_PIN, LOW);
-	    // do not read from water board again until it's re-enabled
-	    water_board_on = 4294967295;
-	// prime for sample taken above (within 15 sec)
-	} else if (millis() % 3600000 <  5005)  {
-	    prime_water_level_read();
-	}
-	Serial.printf("Pos SW: %d, Open: %d, Close: %d, Water: %d\n", posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
-    }
-    delay(1);
 
     if (!digitalRead(OPEN_PIN) && posswitch != 1) {
-	prime_water_level_read();
-	Serial.println("Switch to Open and re-poll water level");
-	posswitch = 1;
-	newpos = openpos;
-	setservo();
+      prime_water_level_read();
+      Serial.println("Switch to Open and re-poll water level");
+      posswitch = 1;
+      newpos = openpos;
+      setservo();
     }
     if (!digitalRead(CLOSE_PIN) && posswitch != -1) {
-	prime_water_level_read();
-	Serial.println("Switch to Close and re-poll water level");
-	posswitch = -1;
-	newpos = closepos;
-	setservo();
+      prime_water_level_read();
+      Serial.println("Switch to Close and re-poll water level");
+      posswitch = -1;
+      newpos = closepos;
+      setservo();
+    }
+
+    if (millis() % 1000 == 0) {
+      if (isConnected()) { 
+        Serial.printf("Wifi still on. Before Telnet...\n\r");
+        telnet.loop();
+        Serial.printf("After Telnet...\n\r");
+      } else {
+        Serial.printf("Wifi connection lost, reconnecting...\n\r");
+        connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
+        Serial.printf("Wifi reconnected\n\r");
+      } 
+      delay(1);
     }
 }
 //* ------------------------------------------------- */
