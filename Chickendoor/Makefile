@@ -6,6 +6,12 @@ flash: killscreen
 	ls -l /dev/ttyUSB0
 	screen -S screen /dev/ttyUSB0 115200
 
+copy:
+	cp /tmp/arduino_build_*/*.bin .
+
+push: copy
+	rsync -av -SH -P --delete --delete-after --force . root@rpi3a1:/root/Chickendoor/
+
 
 restart: killscreen
 	./esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 460800 --before default_reset --after hard_reset chip_id 
@@ -14,4 +20,4 @@ restart: killscreen
 
 
 killscreen:
-	pkill -f -9 'scree[n] .*/dev/ttyUSB0' || :
+	pkill -f -9 '[Ss][Cc][Rr][Ee][Ee][Nn] .*/dev/ttyUSB0' || :
