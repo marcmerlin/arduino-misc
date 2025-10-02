@@ -1,9 +1,12 @@
 /* ------------------------------------------------- */
 
+// TODO: https://github.com/JoaoLopesF/RemoteDebug?tab=readme-ov-file
+
 #include "ESPTelnet.h"          
 //#include <Servo.h>
 #include <ESP32Servo.h>
 
+void(* resetFunc) (void) = 0; // jump to 0 to cause a sofware reboot
 
 /* ------------------------------------------------- */
 
@@ -101,6 +104,8 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, i
   } while (!isConnected() || i++ < max_tries);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+  // https://github.com/espressif/arduino-esp32/issues/1921
+  WiFi.setSleep(true);
   return isConnected();
 }
 
@@ -129,48 +134,52 @@ void setupTelnet() {
     telnet.onInputReceived([](String str) {
       // checks for a certain command
       if ((newpos = str.toInt())) {
-	setservo();
-	telnet.print("Reset posswitch (and NEW: flag) and move servo angle to ");
-	telnet.println(String(newpos));
-	posswitch = 0; 
+          setservo();
+          telnet.print("Reset posswitch (and NEW: flag) and move servo angle to ");
+          telnet.println(String(newpos));
+          posswitch = 0; 
       } else if (str == "open") {
-	posswitch = 2;
-	telnet.println("> Simulate local switch open");
-	Serial.println("> Simulate local switch open");
-	newpos = openpos;
-	setservo();
+          posswitch = 2;
+          telnet.println("> Simulate local switch open");
+          Serial.println("> Simulate local switch open");
+          newpos = openpos;
+          setservo();
       } else if (str == "close") {
-	posswitch = -2;
-	telnet.println("> Simulate local switch close");
-	Serial.println("> Simulate local switch close");
-	newpos = closepos;
-	setservo();
+          posswitch = -2;
+          telnet.println("> Simulate local switch close");
+          Serial.println("> Simulate local switch close");
+          newpos = closepos;
+          setservo();
       } else if (str == "water") {
-	telnet.println("> Trigger water level read, wait 15 sec to get result");
-	Serial.println("> Trigger water level read, wait 15 sec to get result");
-	prime_water_level_read();
+          telnet.println("> Trigger water level read, wait 15 sec to get result");
+          Serial.println("> Trigger water level read, wait 15 sec to get result");
+          prime_water_level_read();
       } else if (str == "ping") {
-	telnet.println("> pong");
-	Serial.println("- Telnet: pong");
+          telnet.println("> pong");
+          Serial.println("- Telnet: pong");
+      } else if (str == "reboot") {
+          telnet.println("> reboot");
+          Serial.println("- reboot");
+          resetFunc();
       } else if (str == "bye") {
-	char posstr[5];
-	telnet.print("Pos SW: ");
-	sprintf(posstr, "%d", posswitch);
-	telnet.print(posstr);
-	telnet.print(", Open SW: ");
-	telnet.print((char) (!digitalRead(OPEN_PIN)+48));
-	telnet.print(" Close SW: ");
-	telnet.print((char) (!digitalRead(CLOSE_PIN)+48));
-	telnet.print(" Water: ");
-	telnet.println((char) (water_read+48));
-	telnet.println("> disconnecting you... Current servo angle is");
-	Serial.print("Disconnecting and sending servo angle ");
-	// We send new to the other other side until they reset it by sending a new
-	// angle to turn that off (adding +1)
-	if (posswitch) { telnet.print("NEW: "); Serial.print("NEW: "); };
-	telnet.println(String(pos));
-	Serial.println(pos);
-	telnet.disconnectClient();
+          char posstr[5];
+          telnet.print("Pos SW: ");
+          sprintf(posstr, "%d", posswitch);
+          telnet.print(posstr);
+          telnet.print(", Open SW: ");
+          telnet.print((char) (!digitalRead(OPEN_PIN)+48));
+          telnet.print(" Close SW: ");
+          telnet.print((char) (!digitalRead(CLOSE_PIN)+48));
+          telnet.print(" Water: ");
+          telnet.println((char) (water_read+48));
+          telnet.println("> disconnecting you... Current servo angle is");
+          Serial.print("Disconnecting and sending servo angle ");
+          // We send new to the other other side until they reset it by sending a new
+          // angle to turn that off (adding +1)
+          if (posswitch) { telnet.print("NEW: "); Serial.print("NEW: "); };
+          telnet.println(String(pos));
+          Serial.println(pos);
+          telnet.disconnectClient();
       }
     });
 
@@ -220,7 +229,7 @@ void setup() {
   pinMode(WATER_PIN, INPUT_PULLUP);
   pinMode(WATER_PWR_PIN, OUTPUT);
 
-  setupSerial(SERIAL_SPEED, "Serial Init");
+  setupSerial(SERIAL_SPEED, "Serial Init " __DATE__ __TIME__);
 
   Serial.println("Priming water board for first read");
   prime_water_level_read();
@@ -314,6 +323,8 @@ void loop() {
       setservo();
     }
 
+    // Wifi still on. Before Telnet...
+    // [D][WiFiClient.cpp:509] connected(): Disconnected: RES: 0, ERR: 128
     if (millis() % 1000 == 0) {
       if (isConnected()) { 
         Serial.printf("Wifi still on. Before Telnet...\n\r");
