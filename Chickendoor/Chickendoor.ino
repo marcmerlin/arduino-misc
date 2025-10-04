@@ -199,8 +199,8 @@ void onTelnetConnect(String ip) {
   Serial.print("- Telnet: ");
   Serial.print(ip);
   Serial.println(" connected");
-  telnet.println("\nWelcome " + telnet.getIP());
-  telnet.println("Commands: [angle:0-255]/open/close/water/ping/bye");
+  telnet.println("\nWelcome " + telnet.getIP() + ". Build Time: " + __DATE__ + " " +  __TIME__);
+  telnet.println("Commands: [angle:0-255]/open/close/water/ping/bye/reboot");
 }
 
 void onTelnetDisconnect(String ip) {
@@ -229,7 +229,7 @@ void setup() {
   pinMode(WATER_PIN, INPUT_PULLUP);
   pinMode(WATER_PWR_PIN, OUTPUT);
 
-  setupSerial(SERIAL_SPEED, "Serial Init " __DATE__ __TIME__);
+  setupSerial(SERIAL_SPEED, "Serial Init ");
 
   Serial.println("Priming water board for first read");
   prime_water_level_read();
@@ -281,6 +281,7 @@ void setup() {
     newpos = openpos;
     Serial.println(newpos);
     setservo();
+    Serial.println("Done with init. Build time: " __DATE__ " " __TIME__);
 }
 
 /* ------------------------------------------------- */
@@ -308,15 +309,23 @@ void loop() {
       Serial.printf("Pos SW: %d, Open: %d, Close: %d, Water: %d\n\r", posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
     }
 
-    if (!digitalRead(OPEN_PIN) && posswitch != 1) {
+    // bug: for some reason the first read can return yes and the 2nd one no.
+    uint16_t op  = !digitalRead(OPEN_PIN);
+    uint16_t op2 = !digitalRead(OPEN_PIN);
+    if (op2 && posswitch != 1) {
       prime_water_level_read();
+      Serial.printf("Open invert: %d / %d (pos %d)\n\r", op, op2, posswitch);
       Serial.println("Switch to Open and re-poll water level");
       posswitch = 1;
       newpos = openpos;
       setservo();
     }
-    if (!digitalRead(CLOSE_PIN) && posswitch != -1) {
+    // bug: for some reason the first read can return yes and the 2nd one no.
+    uint16_t cp  = !digitalRead(CLOSE_PIN);
+    uint16_t cp2 = !digitalRead(CLOSE_PIN);
+    if (cp2 && posswitch != -1) {
       prime_water_level_read();
+      Serial.printf("Close invert: %d / %d (pos %d)\n\r", cp, cp2, posswitch);
       Serial.println("Switch to Close and re-poll water level");
       posswitch = -1;
       newpos = closepos;
@@ -328,6 +337,7 @@ void loop() {
     if (millis() % 1000 == 0) {
       if (isConnected()) { 
         Serial.printf("Wifi still on. Before Telnet...\n\r");
+        Serial.printf("Pos SW: %d, Open: %d, Close: %d, Water: %d\n\r", posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
         telnet.loop();
         Serial.printf("After Telnet...\n\r");
       } else {
