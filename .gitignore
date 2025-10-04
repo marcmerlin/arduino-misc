@@ -1,5 +1,11 @@
-# Prerequisites
-*.d
+wifi_secrets.h
+*/wifi_secrets.h
+
+.vscode/.build
+
+~
+*.swp
+*.swo
 
 # Compiled Object files
 *.slo
