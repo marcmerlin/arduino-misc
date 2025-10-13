@@ -15,7 +15,8 @@ void(* resetFunc) (void) = 0; // jump to 0 to cause a sofware reboot
 
 #define SERVO_PIN	15
 #define OPEN_PIN	23
-#define CLOSE_PIN	22
+// was 22, but seems to be floating or undefined even with pull up
+#define CLOSE_PIN	21
 #define WATER_PIN	18
 // Only power the water testing board once an hour
 #define WATER_PWR_PIN	19
