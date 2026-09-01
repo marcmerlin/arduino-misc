@@ -11,7 +11,6 @@ void(* resetFunc) (void) = 0; // jump to 0 to cause a sofware reboot
 /* ------------------------------------------------- */
 
 #define SERIAL_SPEED    115200
-#include "wifi_secrets.h"
 
 #define SERVO_PIN	15
 #define OPEN_PIN	23
@@ -42,6 +41,167 @@ uint16_t  port = 23;
 Servo myservo;  // create servo object to control a servo
 int16_t pos=90; // slightly opened
 int16_t newpos=pos;
+
+/* ------------------------------------------------- */
+
+#include "wifi_secrets.h"
+#include <ArduinoOTA.h>
+
+template <typename T>
+class GenericSerialSplitter : public Stream {
+private:
+  T* hw;
+  WiFiServer* server;
+  WiFiClient client;
+  bool serverStarted = false; 
+  NetworkUDP udpServer;
+  bool udpStarted = false;
+  uint16_t udpPort;
+  
+  // Cooldown timer to prevent UDP polling from starving the network stack
+  unsigned long lastUdpCheck = 0;
+  const unsigned long UDP_COOLDOWN_MS = 100; // 10Hz limit
+
+public:
+  GenericSerialSplitter(T& hardwareSerial, uint16_t port = 23) {
+    hw = &hardwareSerial;
+    server = new WiFiServer(port);
+    udpPort = port;
+  }
+
+  // Pass the initialization through to the underlying serial interface
+  void begin(unsigned long baud) {
+    hw->begin(baud);
+  }
+
+    // Boolean operator so "if (Serial)" and "while (!Serial)" evaluate cleanly
+  operator bool() const {
+    return hw ? (bool)(*hw) : false;
+  }
+
+  void restart() {
+    Serial.println("Inside SerialSplitter.restart()");
+    if (serverStarted) {
+        server->end();
+        serverStarted = false;
+        Serial.println("SerialSplitter.restart(): end Splitter");
+    }
+    if (client) {
+        client.stop();
+        Serial.println("SerialSplitter.restart(): stop client");
+    }
+    if (udpStarted) {
+        udpServer.stop(); 
+        udpStarted = false;
+    }
+  }
+
+  void handle() {
+    if (WiFi.status() != WL_CONNECTED && WiFi.getMode() != WIFI_AP && WiFi.getMode() != WIFI_AP_STA) {
+        return; 
+    }
+
+    if (!serverStarted) {
+        Serial.println("SerialSplitter: (re)start");
+        server->begin();
+        serverStarted = true;
+    }
+
+    // Enabling this in the past caused it to eat UDP broadcast from the master
+    // hopefully UDP_COOLDOWN_MS will fix this and allow enabling safely
+    if (!udpStarted) {
+        Serial.println("SerialSplitter: (re)start UDP");
+        if (udpServer.begin(udpPort)) {
+            udpStarted = true;
+        }
+    }
+
+    if (server->hasClient()) {
+      if (!client || !client.connected()) {
+        if (client) client.stop();
+        // Fixed Core 3.x deprecation: converted available() to accept()
+        client = server->accept(); 
+        client.println("\n--- Connected to ESP32 Serial Splitter ---");
+      } else {
+        // Fixed Core 3.x deprecation: converted available() to accept()
+        WiFiClient reject = server->accept();
+        reject.stop(); 
+      }
+    }
+  }
+
+  // --- STREAM/PRINT OUTPUT OVERRIDES ---
+  
+  size_t write(uint8_t c) override {
+    size_t n = hw->write(c);         
+    if (client && client.connected()) {
+      client.write(c);               
+    }
+    return n;
+  }
+
+  size_t write(const uint8_t *buffer, size_t size) override {
+    size_t n = hw->write(buffer, size);
+    if (client && client.connected()) {
+      client.write(buffer, size);
+    }
+    return n;
+  }
+
+  // --- STREAM INPUT OVERRIDES (TWO-WAY COMMS) ---
+
+  int available() override { 
+    int total = hw->available();
+    if (client) {
+      total += client.available();
+    }
+    if (udpStarted) {
+        // RATE LIMITING: Only check for new UDP packets every 100ms
+        if (millis() - lastUdpCheck > UDP_COOLDOWN_MS) {
+            lastUdpCheck = millis();
+            if (udpServer.available() == 0) {
+                udpServer.parsePacket();
+            }
+        }
+        total += udpServer.available();
+    }
+    return total;
+  }
+
+  int read() override { 
+    if (client && client.available()) {
+      return client.read();
+    }
+    if (udpStarted && udpServer.available()) {
+      return udpServer.read();
+    }
+    return hw->read(); 
+  }
+
+  int peek() override { 
+    if (client && client.available()) {
+      return client.peek();
+    }
+    if (udpStarted && udpServer.available()) {
+      return udpServer.peek();
+    }
+    return hw->peek(); 
+  }
+
+  void flush() override { 
+    hw->flush(); 
+    // Fixed Core 3.x deprecation: converted flush() to clear()
+    if(client) client.clear(); 
+  }
+};
+
+// 2. Instantiate our splitter using decltype(Serial) to automatically match the architecture
+GenericSerialSplitter<decltype(Serial)> Splitter(Serial, 24);
+
+// 3. THE HIJACK: Replace the word "Serial" with our Splitter for the rest of this file
+#undef Serial
+#define Serial Splitter
+
 
 /* ------------------------------------------------- */
 
@@ -256,39 +416,47 @@ void setup() {
   Serial.println("Start");
   Serial.print("Wifi: ");
   connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
+
+  Serial.println("Setup ArduinoOTA. Remote Wifi Updates Supported!");
+  ArduinoOTA.setHostname("Marc Chickendoor");
+  ArduinoOTA.begin();
+  Serial.println("OTA Ready");
   
-    if (isConnected()) {
-      Serial.println("Wifi connected, opening 1");
-      newpos = 80;
-      setservo();
-      ip = WiFi.localIP();
-      Serial.println();
-      Serial.print("- Telnet: "); Serial.print(ip); Serial.print(" "); Serial.print(port);
-      setupTelnet();
-      Serial.println("telnet setup, opening 2");
-      newpos = 85;
-      setservo();
-      Serial.println("setservo2, opening 3");
-      newpos = 70;
-      setservo();
-    } else {
-      Serial.println();    
-      errorMsg("Error connecting to WiFi");
-    }
-    Serial.println("setservo3, opening 4");
-    newpos = 75;
+  if (isConnected()) {
+    Serial.println("Wifi connected, opening 1");
+    newpos = 80;
     setservo();
-    Serial.print("Setup done, opening to ");
-    newpos = openpos;
-    Serial.println(newpos);
+    ip = WiFi.localIP();
+    Serial.println();
+    Serial.print("- Telnet: "); Serial.print(ip); Serial.print(" "); Serial.print(port);
+    setupTelnet();
+    Serial.println("telnet setup, opening 2");
+    newpos = 85;
     setservo();
-    Serial.println("Done with init. Build time: " __DATE__ " " __TIME__);
+    Serial.println("setservo2, opening 3");
+    newpos = 70;
+    setservo();
+  } else {
+    Serial.println();    
+    errorMsg("Error connecting to WiFi");
+  }
+  Serial.println("setservo3, opening 4");
+  newpos = 75;
+  setservo();
+  Serial.print("Setup done, opening to ");
+  newpos = openpos;
+  Serial.println(newpos);
+  setservo();
+  Serial.println("Done with init. Build time: " __DATE__ " " __TIME__);
 }
 
 /* ------------------------------------------------- */
 
 void loop() {
     static uint32_t nextprint = 0;
+
+    ArduinoOTA.handle();
+    Splitter.handle();
 
     if (millis() > nextprint) {
       // Every 5 seconds
