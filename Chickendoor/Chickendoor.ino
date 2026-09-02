@@ -205,10 +205,33 @@ GenericSerialSplitter<decltype(Serial)> Splitter(Serial, 24);
 
 /* ------------------------------------------------- */
 
+#include <esp_timer.h>
+
+// Returns seconds since boot as a 64-bit unsigned integer
+uint64_t getUptimeSeconds() {
+    return (uint64_t)(esp_timer_get_time() / 1000000ULL);
+}
+
+// Formats uptime as "DDD:HH:MM:SS" into a static buffer
+const char* getFormattedUptime() {
+    static char buf[24];
+    uint64_t total_sec = getUptimeSeconds();
+
+    uint32_t days = total_sec / 86400ULL;
+    uint8_t hours = (total_sec % 86400ULL) / 3600ULL;
+    uint8_t mins  = (total_sec % 3600ULL) / 60ULL;
+    uint8_t secs  = total_sec % 60ULL;
+
+    snprintf(buf, sizeof(buf), "%03lu:%02u:%02u:%02u", (unsigned long)days, hours, mins, secs);
+    return buf;
+}
+
+/* ------------------------------------------------- */
+
 void prime_water_level_read() {
     digitalWrite(WATER_PWR_PIN, HIGH);
     water_board_on = millis();
-    Serial.print("Powering Water Board On for subsequent read at millis: ");
+    Serial.printf("%s: Powering Water Board On for subsequent read at millis: ", getFormattedUptime());
     Serial.println(water_board_on);
 }
 
@@ -221,7 +244,7 @@ void setservo()
 	Serial.println(pos);
 	return;
     }   
-    Serial.printf("Changing servo to %d\n\r", newpos);
+    Serial.printf("%s: Changing servo to %d\n\r", getFormattedUptime(), newpos);
     while (newpos != pos) {
       if (newpos > pos) { pos++; }
       if (newpos < pos) { pos--; }
@@ -302,25 +325,25 @@ void setupTelnet() {
       } else if (str == "open") {
           posswitch = 2;
           telnet.println("> Simulate local switch open");
-          Serial.println("> Simulate local switch open");
+          Serial.printf("> Simulate local switch open %s\n", getFormattedUptime());
           newpos = openpos;
           setservo();
       } else if (str == "close") {
           posswitch = -2;
           telnet.println("> Simulate local switch close");
-          Serial.println("> Simulate local switch close");
+          Serial.printf("> Simulate local switch close %s\n", getFormattedUptime());
           newpos = closepos;
           setservo();
       } else if (str == "water") {
           telnet.println("> Trigger water level read, wait 15 sec to get result");
-          Serial.println("> Trigger water level read, wait 15 sec to get result");
+          Serial.printf("> Trigger water level read, wait 15 sec to get result %s\n", getFormattedUptime());
           prime_water_level_read();
       } else if (str == "ping") {
           telnet.println("> pong");
-          Serial.println("- Telnet: pong");
+          Serial.printf("- Telnet: pong %s\n", getFormattedUptime());
       } else if (str == "reboot") {
           telnet.println("> reboot");
-          Serial.println("- reboot");
+          Serial.printf("- reboot %s\n", getFormattedUptime());
           resetFunc();
       } else if (str == "bye") {
           char posstr[5];
@@ -334,7 +357,7 @@ void setupTelnet() {
           telnet.print(" Water: ");
           telnet.println((char) (water_read+48));
           telnet.println("> disconnecting you... Current servo angle is");
-          Serial.print("Disconnecting and sending servo angle ");
+          Serial.printf("Disconnecting and sending servo angle %s\n", getFormattedUptime());
           // We send new to the other other side until they reset it by sending a new
           // angle to turn that off (adding +1)
           if (posswitch) { telnet.print("NEW: "); Serial.print("NEW: "); };
@@ -357,7 +380,7 @@ void setupTelnet() {
 
 // (optional) callback functions for telnet events
 void onTelnetConnect(String ip) {
-  Serial.print("- Telnet: ");
+  Serial.printf("%s: - Telnet: ", getFormattedUptime());
   Serial.print(ip);
   Serial.println(" connected");
   telnet.println("\nWelcome " + telnet.getIP() + ". Build Time: " + __DATE__ + " " +  __TIME__);
@@ -365,19 +388,19 @@ void onTelnetConnect(String ip) {
 }
 
 void onTelnetDisconnect(String ip) {
-  Serial.print("- Telnet: ");
+  Serial.printf("%s: - Telnet: ", getFormattedUptime());
   Serial.print(ip);
-  Serial.println(" disconnected");
+  Serial.println("disconnected");
 }
 
 void onTelnetReconnect(String ip) {
-  Serial.print("- Telnet: ");
+  Serial.printf("%s: - Telnet: ", getFormattedUptime());
   Serial.print(ip);
-  Serial.println(" reconnected");
+  Serial.println("%s: reconnected");
 }
 
 void onTelnetConnectionAttempt(String ip) {
-  Serial.print("- Telnet: ");
+  Serial.printf("%s: - Telnet: ", getFormattedUptime());
   Serial.print(ip);
   Serial.println(" tried to connect");
 }
@@ -392,10 +415,10 @@ void setup() {
 
   setupSerial(SERIAL_SPEED, "Serial Init ");
 
-  Serial.println("Priming water board for first read");
+  Serial.printf("%s: Priming water board for first read\n", getFormattedUptime());
   prime_water_level_read();
 
-  Serial.println("Servo Init, opening to 90");
+  Serial.printf("%s: Servo Init, opening to 90\n", getFormattedUptime());
   myservo.attach(SERVO_PIN);  // attaches the servo on GIO2 to the servo object
   myservo.write(pos);
 #if 0
@@ -465,7 +488,7 @@ void loop() {
       uint32_t diff = millis() - water_board_on;
       // Wait at least 5 sec before trying to read from board after power on
       if (millis() > water_board_on  && diff > 4500) {
-        Serial.printf("mil:%u, last: %u, diff: %u. Reading and Powering Water Board Back Off. Water: ", millis(), water_board_on, diff);
+        Serial.printf("%s: mil:%u, last: %u, diff: %u. Reading and Powering Water Board Back Off. Water: ", getFormattedUptime(), millis(), water_board_on, diff);
         water_read = !digitalRead(WATER_PIN);
         Serial.println(water_read);
         digitalWrite(WATER_PWR_PIN, LOW);
@@ -475,7 +498,7 @@ void loop() {
           // prime for sample taken above (within 15 sec)
           prime_water_level_read();
       }
-      Serial.printf("Pos SW: %d, Open: %d, Close: %d, Water: %d\n\r", posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
+      Serial.printf("%s: Pos SW: %d, Open: %d, Close: %d, Water: %d\n\r", getFormattedUptime(), posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
     }
 
     // bug: for some reason the first read can return yes and the 2nd one no.
@@ -483,8 +506,8 @@ void loop() {
     uint16_t op2 = !digitalRead(OPEN_PIN);
     if (op2 && posswitch != 1) {
       prime_water_level_read();
-      Serial.printf("Open invert: %d / %d (pos %d)\n\r", op, op2, posswitch);
-      Serial.println("Switch to Open and re-poll water level");
+      Serial.printf("%s: Open invert: %d / %d (pos %d)\n\r", getFormattedUptime(), op, op2, posswitch);
+      Serial.printf("%s: Switch to Open and re-poll water level\n\r", getFormattedUptime());
       posswitch = 1;
       newpos = openpos;
       setservo();
@@ -494,8 +517,8 @@ void loop() {
     uint16_t cp2 = !digitalRead(CLOSE_PIN);
     if (cp2 && posswitch != -1) {
       prime_water_level_read();
-      Serial.printf("Close invert: %d / %d (pos %d)\n\r", cp, cp2, posswitch);
-      Serial.println("Switch to Close and re-poll water level");
+      Serial.printf("%s: Close invert: %d / %d (pos %d)\n\r", getFormattedUptime(), cp, cp2, posswitch);
+      Serial.printf("%s: Switch to Close and re-poll water level\n\r", getFormattedUptime());
       posswitch = -1;
       newpos = closepos;
       setservo();
@@ -505,14 +528,14 @@ void loop() {
     // [D][WiFiClient.cpp:509] connected(): Disconnected: RES: 0, ERR: 128
     if (millis() % 1000 == 0) {
       if (isConnected()) { 
-        Serial.printf("Wifi still on. Before Telnet...\n\r");
-        Serial.printf("Pos SW: %d, Open: %d, Close: %d, Water: %d\n\r", posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
+        Serial.printf("%s: Wifi still on. Before Telnet...\n\r", getFormattedUptime());
+        Serial.printf("%s: Pos SW: %d, Open: %d, Close: %d, Water: %d\n\r", getFormattedUptime(), posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
         telnet.loop();
-        Serial.printf("After Telnet...\n\r");
+        Serial.printf("%s: After Telnet...\n\r", getFormattedUptime());
       } else {
-        Serial.printf("Wifi connection lost, reconnecting...\n\r");
+        Serial.printf("%s: Wifi connection lost, reconnecting...\n\r");
         connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
-        Serial.printf("Wifi reconnected\n\r");
+        Serial.printf("%s: Wifi reconnected\n\r", getFormattedUptime());
       } 
       delay(1);
     }
