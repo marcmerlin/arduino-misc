@@ -526,18 +526,15 @@ void loop() {
 
     // Wifi still on. Before Telnet...
     // [D][WiFiClient.cpp:509] connected(): Disconnected: RES: 0, ERR: 128
-    if (millis() % 1000 == 0) {
-      if (isConnected()) { 
-        Serial.printf("%s: Wifi still on. Before Telnet...\n\r", getFormattedUptime());
-        Serial.printf("%s: Pos SW: %d, Open: %d, Close: %d, Water: %d\n\r", getFormattedUptime(), posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
+    if (isConnected()) { 
+        //Serial.printf("%s: Wifi still on. Before Telnet...\n\r", getFormattedUptime());
+        //Serial.printf("%s: wifi connected\n\r", getFormattedUptime(), posswitch, !digitalRead(OPEN_PIN), !digitalRead(CLOSE_PIN), water_read);
         telnet.loop();
-        Serial.printf("%s: After Telnet...\n\r", getFormattedUptime());
-      } else {
-        Serial.printf("%s: Wifi connection lost, reconnecting...\n\r");
+        // Serial.printf("%s: After Telnet...\n\r", getFormattedUptime());
+    } else {
+        Serial.printf("%s: Wifi connection lost, reconnecting...\n\r", getFormattedUptime());
         connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
         Serial.printf("%s: Wifi reconnected\n\r", getFormattedUptime());
-      } 
-      delay(1);
     }
 }
 //* ------------------------------------------------- */
